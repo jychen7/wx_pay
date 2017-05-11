@@ -7,51 +7,37 @@ require 'active_support/core_ext/hash/conversions'
 module WxPay
   module Service
     GATEWAY_URL = 'https://api.mch.weixin.qq.com'
+    OPEN_URL = 'https://open.weixin.qq.com'
+    API_URL = 'https://api.weixin.qq.com'
 
     def self.generate_authorize_url(redirect_uri, state = nil)
       state ||= SecureRandom.hex 16
-      "https://open.weixin.qq.com/connect/oauth2/authorize?appid=#{WxPay.appid}&redirect_uri=#{CGI::escape redirect_uri}&response_type=code&scope=snsapi_base&state=#{state}"
+      url = "#{OPEN_URL}/connect/oauth2/authorize?" + {
+        appid: WxPay.appid,
+        redirect_uri: CGI::escape(redirect_uri),
+        response_type: "code",
+        scope: "snsapi_base",
+        state: state
+      }.to_query
+      url
     end
 
     def self.authenticate(authorization_code, options = {})
-      options = WxPay.extra_rest_client_options.merge(options)
-      url = "https://api.weixin.qq.com/sns/oauth2/access_token?appid=#{WxPay.appid}&secret=#{WxPay.appsecret}&code=#{authorization_code}&grant_type=authorization_code"
-
-      ::JSON.parse(RestClient::Request.execute(
-        {
-          method: :get,
-          url: url
-        }.merge(options)
-      ), quirks_mode: true)
+      params = { code: authorization_code }
+      request_auth_json("/sns/oauth2/access_token", params, options)
     end
 
     def self.authenticate_from_weapp(js_code, options = {})
-      options = WxPay.extra_rest_client_options.merge(options)
-      url = "https://api.weixin.qq.com/sns/jscode2session?appid=#{WxPay.appid}&secret=#{WxPay.appsecret}&js_code=#{js_code}&grant_type=authorization_code"
-
-      ::JSON.parse(RestClient::Request.execute(
-        {
-          method: :get,
-          url: url
-        }.merge(options)
-      ), quirks_mode: true)
+      params = { js_code: js_code }
+      request_auth_json("/sns/jscode2session", params, options)
     end
     
     INVOKE_UNIFIEDORDER_REQUIRED_FIELDS = [:body, :out_trade_no, :total_fee, :spbill_create_ip, :notify_url, :trade_type]
     def self.invoke_unifiedorder(params, options = {})
-      params = {
-        appid: options.delete(:appid) || WxPay.appid,
-        mch_id: options.delete(:mch_id) || WxPay.mch_id,
-        key: options.delete(:key) || WxPay.key,
-        nonce_str: SecureRandom.uuid.tr('-', '')
-      }.merge(params)
-
       check_required_options(params, INVOKE_UNIFIEDORDER_REQUIRED_FIELDS)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/pay/unifiedorder", make_payload(params), options)))
-
+      r = request_gateway_result("/pay/unifiedorder", params, options)
       yield r if block_given?
-
       r
     end
 
@@ -66,7 +52,7 @@ module WxPay
 
       check_required_options(params, INVOKE_CLOSEORDER_REQUIRED_FIELDS)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/pay/closeorder", make_payload(params), options)))
+      r = request_gateway_result("/pay/closeorder", params, options)
 
       yield r if block_given?
 
@@ -127,14 +113,15 @@ module WxPay
         verify_ssl: OpenSSL::SSL::VERIFY_NONE
       }.merge(options)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/secapi/pay/refund", make_payload(params), options)))
+      r = request_gateway_result("/secapi/pay/refund", params, options)
 
       yield r if block_given?
 
       r
     end
 
-    REFUND_QUERY_REQUIRED_FIELDS = [:out_trade_no]
+    REFUND_QUERY_REQUIRED_FIELDS = []
+    # either out_trade_no or transaction_id
     def self.refund_query(params, options = {})
       params = {
         appid: options.delete(:appid) || WxPay.appid,
@@ -143,8 +130,9 @@ module WxPay
       }.merge(params)
 
       check_required_options(params, ORDER_QUERY_REQUIRED_FIELDS)
+      warn("WxPay Warn: missing required option: out_trade_no or transaction_id must have one") if ([:out_trade_no, :transaction_id] & params.keys) == []
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/pay/refundquery", make_payload(params), options)))
+      r = request_gateway_result("/pay/refundquery", params, options)
 
       yield r if block_given?
 
@@ -167,7 +155,7 @@ module WxPay
         verify_ssl: OpenSSL::SSL::VERIFY_NONE
       }.merge(options)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/mmpaymkttransfers/promotion/transfers", make_payload(params), options)))
+      r = request_gateway_result("/mmpaymkttransfers/promotion/transfers", params, options)
 
       yield r if block_given?
 
@@ -190,14 +178,15 @@ module WxPay
         verify_ssl: OpenSSL::SSL::VERIFY_NONE
       }.merge(options)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/mmpaymkttransfers/gettransferinfo", make_payload(params), options)))
+      r = request_gateway_result("/mmpaymkttransfers/gettransferinfo", params, options)
 
       yield r if block_given?
 
       r
     end
 
-    INVOKE_REVERSE_REQUIRED_FIELDS = [:out_trade_no]
+    INVOKE_REVERSE_REQUIRED_FIELDS = []
+    # either out_trade_no or transaction_id
     def self.invoke_reverse(params, options = {})
       params = {
         appid: options.delete(:appid) || WxPay.appid,
@@ -206,6 +195,7 @@ module WxPay
       }.merge(params)
 
       check_required_options(params, INVOKE_REVERSE_REQUIRED_FIELDS)
+      warn("WxPay Warn: missing required option: out_trade_no or transaction_id must have one") if ([:out_trade_no, :transaction_id] & params.keys) == []
 
       options = {
         ssl_client_cert: options.delete(:apiclient_cert) || WxPay.apiclient_cert,
@@ -213,7 +203,7 @@ module WxPay
         verify_ssl: OpenSSL::SSL::VERIFY_NONE
       }.merge(options)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/secapi/pay/reverse", make_payload(params), options)))
+      r = request_gateway_result("/secapi/pay/reverse", params, options)
 
       yield r if block_given?
 
@@ -236,44 +226,39 @@ module WxPay
         verify_ssl: OpenSSL::SSL::VERIFY_NONE
       }.merge(options)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/pay/micropay", make_payload(params), options)))
+      r = request_gateway_result("/pay/micropay", params, options)
 
       yield r if block_given?
 
       r
     end
 
-    ORDER_QUERY_REQUIRED_FIELDS = [:out_trade_no]
+    ORDER_QUERY_REQUIRED_FIELDS = []
+    # either out_trade_no or transaction_id
     def self.order_query(params, options = {})
-      params = {
-        appid: options.delete(:appid) || WxPay.appid,
-        mch_id: options.delete(:mch_id) || WxPay.mch_id,
-        nonce_str: SecureRandom.uuid.tr('-', '')
-      }.merge(params)
-
-
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/pay/orderquery", make_payload(params), options)))
       check_required_options(params, ORDER_QUERY_REQUIRED_FIELDS)
-
+      warn("WxPay Warn: missing required option: out_trade_no or transaction_id must have one") if ([:out_trade_no, :transaction_id] & params.keys) == []
+      
+      r = request_gateway_result("/pay/orderquery", params, options)
       yield r if block_given?
-
       r
     end
 
-    DOWNLOAD_BILL_REQUIRED_FIELDS = [:bill_date, :bill_type]
+    DOWNLOAD_BILL_REQUIRED_FIELDS = [:bill_date]
     def self.download_bill(params, options = {})
-      params = {
-        appid: options.delete(:appid) || WxPay.appid,
-        mch_id: options.delete(:mch_id) || WxPay.mch_id,
-        nonce_str: SecureRandom.uuid.tr('-', ''),
-      }.merge(params)
-
       check_required_options(params, DOWNLOAD_BILL_REQUIRED_FIELDS)
-
-      r = invoke_remote("#{GATEWAY_URL}/pay/downloadbill", make_payload(params), options)
-
+      
+      r = request_gateway_raw("/pay/downloadbill", params, options)
       yield r if block_given?
+      r
+    end
 
+    SETTLEMENT_QUERY_REQUIRED_FIELDS = [:usetag, :offset, :limit, :date_start, :date_end]
+    def self.settlement_query(params, options = {})
+      check_required_options(params, SETTLEMENT_QUERY_REQUIRED_FIELDS)
+      
+      r = request_gateway_result("/pay/settlementquery", params, options)
+      yield r if block_given?
       r
     end
 
@@ -292,7 +277,7 @@ module WxPay
         verify_ssl: OpenSSL::SSL::VERIFY_NONE
       }.merge(options)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/mmpaymkttransfers/sendgroupredpack", make_payload(params), options)))
+      r = request_gateway_result("/mmpaymkttransfers/sendgroupredpack", params, options)
 
       yield r if block_given?
 
@@ -314,7 +299,7 @@ module WxPay
         verify_ssl: OpenSSL::SSL::VERIFY_NONE
       }.merge(options)
 
-      r = WxPay::Result.new(Hash.from_xml(invoke_remote("#{GATEWAY_URL}/mmpaymkttransfers/sendredpack", make_payload(params), options)))
+      r = request_gateway_result("/mmpaymkttransfers/sendredpack", params, options)
 
       yield r if block_given?
 
@@ -331,23 +316,50 @@ module WxPay
         end
       end
 
-      def make_payload(params)
+      def generate_signed_payload(params)
         sign = WxPay::Sign.generate(params)
         params.delete(:key) if params[:key]
         "<xml>#{params.map { |k, v| "<#{k}>#{v}</#{k}>" }.join}<sign>#{sign}</sign></xml>"
       end
 
-      def invoke_remote(url, payload, options = {})
+      def request_gateway_raw(path, params, options = {})
+        params = {
+          appid: options.delete(:appid) || WxPay.appid,
+          mch_id: options.delete(:mch_id) || WxPay.mch_id,
+          nonce_str: SecureRandom.uuid.tr('-', ''),
+        }.merge(params)
         options = WxPay.extra_rest_client_options.merge(options)
 
         RestClient::Request.execute(
           {
             method: :post,
-            url: url,
-            payload: payload,
+            url: "#{GATEWAY_URL}" + path,
+            payload: generate_signed_payload(params),
             headers: { content_type: 'application/xml' }
           }.merge(options)
         )
+      end
+
+      def request_gateway_result(path, params, options = {})
+        raw = request_gateway_raw(path, params, options)
+        WxPay::Result.new(Hash.from_xml(raw))
+      end
+
+      def request_auth_json(path, params, options = {})
+        params = {
+          appid: WxPay.appid,
+          secret: WxPay.appsecret,
+          grant_type: "authorization_code"
+        }.merge(params)
+        url = "#{API_URL}" + path + "?" + params.to_query
+        options = WxPay.extra_rest_client_options.merge(options)
+
+        ::JSON.parse(RestClient::Request.execute(
+          {
+            method: :get,
+            url: url
+          }.merge(options)
+        ), quirks_mode: true)
       end
     end
   end
