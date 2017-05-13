@@ -62,7 +62,6 @@ class ServiceTest < MiniTest::Test
       appId: "wxd930ea5d5a258f4f",
       package: "prepay_id=",
       nonceStr: "7b7340e497d143b694521e9f948f7bda",
-      timeStamp: "1494683701",
       signType: "MD5",
       timeStamp: "1494683549",
       paySign: "1AD0A4FA98E51CDC9C820B1F8711CB0E"
