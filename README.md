@@ -3,9 +3,13 @@
 A simple Wechat pay ruby gem, without unnecessary magic or wrapper.
 copied from [alipay](https://github.com/chloerei/alipay) .
 
-Please read official document first: <https://mp.weixin.qq.com/paymch/readtemplate?t=mp/business/course3_tmpl&lang=zh_CN>.
+Please read official document first:
 
-[![Build Status](https://travis-ci.org/jasl/wx_pay.svg?branch=master)](https://travis-ci.org/jasl/wx_pay)
+- [China](https://pay.weixin.qq.com/wiki/doc/api/index.html)
+- [International](https://pay.weixin.qq.com/wechatpay_guide/help_docs.shtml)
+
+[![Build Status](https://travis-ci.org/jychen7/wx_pay.svg?branch=master)](https://travis-ci.org/jychen7/wx_pay)
+[![Coverage Status](https://coveralls.io/repos/github/jychen7/wx_pay/badge.svg?branch=master)](https://coveralls.io/github/jychen7/wx_pay?branch=master)
 
 ## Installation
 
