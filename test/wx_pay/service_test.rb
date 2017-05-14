@@ -70,40 +70,24 @@ class ServiceTest < MiniTest::Test
   end
 
   def test_invoke_with_gateway_result
-    response_body = <<-EOF
-     <xml>
-       <return_code><![CDATA[SUCCESS]]></return_code>
-       <result_code><![CDATA[SUCCESS]]></result_code>
-     </xml>
-    EOF
-
-    stub_request(:any, /api.mch.weixin.qq.com/).to_return(body: response_body)
-    [
+    MiniTest::Test.stub_gateway([
       :invoke_unifiedorder, :invoke_closeorder,
       :invoke_refund, :refund_query,
       :invoke_transfer, :gettransferinfo,
       :invoke_reverse, :invoke_micropay,
       :order_query, :settlement_query,
       :sendgroupredpack, :sendredpack
-    ].each do |public_method|
-      r = WxPay::Service.send(public_method, @params)
+    ], [WxPay::Service]) { |r|
       assert r.success?
-    end
+    }
   end
 
   def test_request_gateway_raw_only
-    response_body = <<-EOF
-     <xml>
-       <return_code><![CDATA[SUCCESS]]></return_code>
-       <result_code><![CDATA[SUCCESS]]></result_code>
-     </xml>
-    EOF
-
-    stub_request(:any, /api.mch.weixin.qq.com/).to_return(body: response_body)
-    [:download_bill].each do |public_method|
-      r = WxPay::Service.send(public_method, @params)
+    MiniTest::Test.stub_gateway([
+      :download_bill
+    ], [WxPay::Service]) { |r|
       assert r.body.include?("SUCCESS")
-    end    
+    }
   end
 
   def test_accept_multiple_app_id_when_invoke
