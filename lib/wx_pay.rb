@@ -1,6 +1,11 @@
 require 'wx_pay/result'
 require 'wx_pay/sign'
 require 'wx_pay/service'
+require 'wx_pay/service/base'
+require 'wx_pay/service/app'
+require 'wx_pay/service/jsapi'
+require 'wx_pay/service/micropay'
+require 'wx_pay/service/native'
 require 'openssl'
 
 module WxPay
